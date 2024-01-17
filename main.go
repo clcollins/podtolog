@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	defaultTemplate = `	fetch logs //, scanLimitGBytes: 500, samplingRatio: 1000
+	defaultTemplate = `fetch logs //, scanLimitGBytes: 500, samplingRatio: 1000
 	| filter matchesValue(k8s.pod.uid, "{{ .PodUID }}")
 	| sort timestamp desc`
 
@@ -79,10 +79,8 @@ func buildLogURL(queryData query) (string, error) {
 		return s, err
 	}
 
-	// fmt.Println(q.String())
-
+	// URL encode the query string
 	eq := url.PathEscape(q.String())
-	// fmt.Println(eq)
 
 	// Base64 encode the query string
 	bq := base64.RawStdEncoding.EncodeToString([]byte(eq))
