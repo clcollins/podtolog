@@ -54,7 +54,7 @@ func main() {
 		Use: "podtolog (POD)",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
-				cmd.Help()
+				cmd.Help() //nolint:errcheck
 				os.Exit(0)
 			}
 			return nil
@@ -63,7 +63,7 @@ func main() {
 
 			pflag.Parse()
 
-			viper.BindPFlags(pflag.CommandLine)
+			viper.BindPFlags(pflag.CommandLine) //nolint:errcheck
 			namespace := viper.GetString("namespace")
 
 			var query = query{
@@ -79,7 +79,7 @@ func main() {
 		},
 	}
 
-	command.Execute()
+	command.Execute() //nolint:errcheck
 }
 
 func buildLogURL(query query) (string, error) {
@@ -182,6 +182,11 @@ func parseTemplate(templateString string, query query) (*bytes.Buffer, error) {
 	if err != nil {
 		return &queryString, err
 	}
-	t.Execute(&queryString, query)
+
+	err = t.Execute(&queryString, query)
+	if err != nil {
+		return &queryString, err
+	}
+
 	return &queryString, nil
 }
