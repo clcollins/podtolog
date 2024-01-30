@@ -1,6 +1,6 @@
 module github.com/clcollins/podtolog
 
-go 1.21.2
+go 1.21
 
 require (
 	github.com/spf13/cobra v1.8.0
