@@ -47,7 +47,6 @@ const (
 )
 
 // Pass a pod name as argument; accept optional namespace flag
-// If flag is not passed, use default namespace?
 func main() {
 	pflag.StringP("namespace", "n", "", "namespace {default: current namespace}")
 
@@ -91,27 +90,31 @@ func buildLogURL(query query) (string, error) {
 		return s, err
 	}
 
+	// Get the current namespace
 	loader := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(clientcmd.NewDefaultClientConfigLoadingRules(), &clientcmd.ConfigOverrides{})
-
 	currentNamespace, _, err := loader.Namespace()
 	if err != nil {
 		return s, err
 	}
 
+	// Get the KUBECONFIG
 	kubeConfig, err := clientcmd.BuildConfigFromFlags("", home+"/.kube/config")
 	if err != nil {
 		return s, err
 	}
 
+	// Create a Kubernetes dynamic client
 	kubeClient, err = dynamic.NewForConfig(kubeConfig)
 	if err != nil {
 		return s, err
 	}
 
+	// If no namespace is passed, use the current namespace
 	if query.Namespace == "" {
 		query.Namespace = currentNamespace
 	}
 
+	// Get the pod UID
 	pod, err := kubeClient.Resource(podResource).Namespace(query.Namespace).Get(context.TODO(), query.PodName, metav1.GetOptions{})
 	if err != nil {
 		return s, err
@@ -119,6 +122,7 @@ func buildLogURL(query query) (string, error) {
 
 	query.PodUID = string(pod.GetUID())
 
+	// Get the DynaKube API URL
 	query.Shard, err = func(kubeClient *dynamic.DynamicClient) (string, error) {
 		dk, err := kubeClient.Resource(dynaKubeResource).Namespace(dynaKubeNamespace).Get(context.TODO(), dynaKubeName, metav1.GetOptions{})
 		if err != nil {
