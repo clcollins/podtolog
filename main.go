@@ -2,14 +2,22 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"html/template"
 	"log"
 	"net/url"
+	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
@@ -20,21 +28,42 @@ const (
 	defaultLogQueryPath = "ui/logs-events"
 )
 
+var kubeClient *dynamic.DynamicClient
+
 type query struct {
-	PodUID string
+	PodUID    string
+	PodName   string
+	Namespace string
+	Shard     string
 }
 
+var podResource = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
+var namespaceResource = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}
+var dynaKubeResource = schema.GroupVersionResource{Group: "dynatrace.com", Version: "v1alpha1", Resource: "dynakubes"}
+
+const (
+	dynaKubeNamespace = "dynatrace"
+	dynaKubeName      = "request-serving"
+	dynaKubeApiURL    = ".spec.apiUrl"
+)
+
+// Pass a pod name as argument; accept optional namespace flag
+// If flag is not passed, use default namespace?
 func main() {
-	viper.SetDefault("Flag", "Flag Value")
+	pflag.String("namespace", "", "namespace {default: current namespace}")
+	pflag.Parse()
+	viper.BindPFlags(pflag.CommandLine)
+
+	namespace := viper.GetString("namespace")
 
 	command := &cobra.Command{
 		Run: func(c *cobra.Command, args []string) {
 
 			var query = query{
-				PodUID: args[0],
+				PodName:   args[0],
+				Namespace: namespace,
 			}
 
-			fmt.Printf("Query: %+v\n", query)
 			u, err := buildLogURL(query)
 			if err != nil {
 				log.Fatal(err)
@@ -46,15 +75,54 @@ func main() {
 	command.Execute()
 }
 
-func buildLogURL(queryData query) (string, error) {
+func buildLogURL(query query) (string, error) {
 	var s string
 
-	host, err := getConfig()
+	home, err := os.UserHomeDir()
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	kubeConfig, err := clientcmd.BuildConfigFromFlags("", home+"/.kube/config")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	kubeClient, err = dynamic.NewForConfig(kubeConfig)
 	if err != nil {
 		return s, err
 	}
 
-	u, err := url.Parse(fmt.Sprintf("https://%s", host))
+	if query.Namespace == "" {
+		// TODO: Replace this with a call to get the current namespace
+		query.Namespace = "default"
+	}
+
+	pod, err := kubeClient.Resource(podResource).Namespace(query.Namespace).Get(context.TODO(), query.PodName, metav1.GetOptions{})
+	if err != nil {
+		return s, err
+	}
+
+	query.PodUID = string(pod.GetUID())
+
+	query.Shard, err = func(kubeClient *dynamic.DynamicClient) (string, error) {
+		dk, err := kubeClient.Resource(dynaKubeResource).Namespace(dynaKubeNamespace).Get(context.TODO(), dynaKubeName, metav1.GetOptions{})
+		if err != nil {
+			return "", err
+		}
+
+		u, err := url.Parse(dk.Object["spec"].(map[string]interface{})["apiUrl"].(string))
+		if err != nil {
+			return "", err
+		}
+
+		return u.Hostname(), nil
+	}(kubeClient)
+	if err != nil {
+		return s, err
+	}
+
+	u, err := url.Parse(fmt.Sprintf("https://%s", query.Shard))
 	if err != nil {
 		return s, err
 	}
@@ -74,7 +142,7 @@ func buildLogURL(queryData query) (string, error) {
 	u.RawQuery = params.Encode()
 
 	// Create the log query string
-	q, err := parseTemplate(defaultTemplate, queryData)
+	q, err := parseTemplate(defaultTemplate, query)
 	if err != nil {
 		return s, err
 	}
@@ -98,33 +166,4 @@ func parseTemplate(templateString string, query query) (*bytes.Buffer, error) {
 	}
 	t.Execute(&queryString, query)
 	return &queryString, nil
-}
-
-func getConfig() (string, error) {
-	var host string
-
-	viper.SetEnvPrefix("podtolog")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath(".")
-	viper.AddConfigPath("$HOME/.config/podtolog")
-
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); ok {
-			// Config file not found; ignore error if desired
-			log.Printf("WARNING: %s\n", err)
-		} else {
-			// Config file was found but another error was produced
-			return host, err
-		}
-	}
-
-	viper.AutomaticEnv()
-
-	host = viper.GetString("host")
-
-	if host == "" {
-		return host, fmt.Errorf("cannot find 'PODTOLOG_HOST' environment variable or 'host' value in %s", viper.ConfigFileUsed())
-	}
-
-	return host, nil
 }
