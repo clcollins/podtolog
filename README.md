@@ -1,9 +1,17 @@
 # PodToLog
 
-Tool to build a Dynatrace query URL from a Kubernetes pod's name and namespace. This uses your existing cluster credentials to gather the data and build the url (eg: `oc whoami`).
+PodToLog is a tool to build a Dynatrace query URL from a Kubernetes pod's name and optional namespace. If no namespace is supplied, the current namespace is assumed. 
 
-## Usage
+PodToLog uses your existing cluster credentials to gather the data and build the url (eg: `oc whoami`).
 
-1. Run `podtolog --namespace <namespace> <podname>`
+```
+# Usage
 
-2. Open the resulting link in your browser.
+podtolog --help
+Usage:
+  podtolog [-n NAMESPACE] (POD) [flags]
+
+Flags:
+  -h, --help               help for podtolog
+  -n, --namespace string   namespace {default: current namespace}
+```

@@ -38,7 +38,6 @@ type query struct {
 }
 
 var podResource = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}
-var namespaceResource = schema.GroupVersionResource{Group: "", Version: "v1", Resource: "namespaces"}
 var dynaKubeResource = schema.GroupVersionResource{Group: "dynatrace.com", Version: "v1alpha1", Resource: "dynakubes"}
 
 const (
@@ -50,14 +49,23 @@ const (
 // Pass a pod name as argument; accept optional namespace flag
 // If flag is not passed, use default namespace?
 func main() {
-	pflag.String("namespace", "", "namespace {default: current namespace}")
-	pflag.Parse()
-	viper.BindPFlags(pflag.CommandLine)
-
-	namespace := viper.GetString("namespace")
+	pflag.StringP("namespace", "n", "", "namespace {default: current namespace}")
 
 	command := &cobra.Command{
+		Use: "podtolog [-n NAMESPACE] (POD)",
+		PreRunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				cmd.Help()
+				os.Exit(0)
+			}
+			return nil
+		},
 		Run: func(c *cobra.Command, args []string) {
+
+			pflag.Parse()
+
+			viper.BindPFlags(pflag.CommandLine)
+			namespace := viper.GetString("namespace")
 
 			var query = query{
 				PodName:   args[0],
@@ -80,12 +88,19 @@ func buildLogURL(query query) (string, error) {
 
 	home, err := os.UserHomeDir()
 	if err != nil {
-		log.Fatal(err)
+		return s, err
+	}
+
+	loader := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(clientcmd.NewDefaultClientConfigLoadingRules(), &clientcmd.ConfigOverrides{})
+
+	currentNamespace, _, err := loader.Namespace()
+	if err != nil {
+		return s, err
 	}
 
 	kubeConfig, err := clientcmd.BuildConfigFromFlags("", home+"/.kube/config")
 	if err != nil {
-		log.Fatal(err)
+		return s, err
 	}
 
 	kubeClient, err = dynamic.NewForConfig(kubeConfig)
@@ -94,8 +109,7 @@ func buildLogURL(query query) (string, error) {
 	}
 
 	if query.Namespace == "" {
-		// TODO: Replace this with a call to get the current namespace
-		query.Namespace = "default"
+		query.Namespace = currentNamespace
 	}
 
 	pod, err := kubeClient.Resource(podResource).Namespace(query.Namespace).Get(context.TODO(), query.PodName, metav1.GetOptions{})
