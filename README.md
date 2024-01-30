@@ -9,7 +9,7 @@ PodToLog uses your existing cluster credentials to gather the data and build the
 
 podtolog --help
 Usage:
-  podtolog [-n NAMESPACE] (POD) [flags]
+  podtolog (POD) [flags]
 
 Flags:
   -h, --help               help for podtolog
