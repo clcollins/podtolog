@@ -52,7 +52,7 @@ func main() {
 	pflag.StringP("namespace", "n", "", "namespace {default: current namespace}")
 
 	command := &cobra.Command{
-		Use: "podtolog [-n NAMESPACE] (POD)",
+		Use: "podtolog (POD)",
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 {
 				cmd.Help()
